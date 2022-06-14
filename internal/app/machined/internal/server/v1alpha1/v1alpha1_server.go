@@ -34,6 +34,7 @@ import (
 	"github.com/rs/xid"
 	"github.com/siderolabs/go-pointer"
 	"github.com/talos-systems/go-blockdevice/blockdevice/partition/gpt"
+	"github.com/talos-systems/go-cmd/pkg/cmd"
 	"github.com/talos-systems/go-kmsg"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -457,15 +458,21 @@ func (s *Server) Shutdown(ctx context.Context, in *machine.ShutdownRequest) (rep
 	}
 
 	go func() {
-		if err := s.Controller.Run(context.Background(), runtime.SequenceShutdown, in, runtime.WithTakeover()); err != nil {
-			if !runtime.IsRebootError(err) {
-				log.Println("shutdown failed:", err)
+		if os.Args[0] == "/sbin/poweroff" {
+			if _, err := cmd.Run("/sbin/poweroff"); err != nil {
+				log.Print(fmt.Errorf("error calling /sbin/poweroff: %w", err).Error())
 			}
+		} else {
+			if err := s.Controller.Run(context.Background(), runtime.SequenceShutdown, in, runtime.WithTakeover()); err != nil {
+				if !runtime.IsRebootError(err) {
+					log.Println("shutdown failed:", err)
+				}
 
-			if err != runtime.ErrLocked {
-				// NB: We stop the gRPC server since a failed sequence triggers a
-				// reboot.
-				s.server.GracefulStop()
+				if err != runtime.ErrLocked {
+					// NB: We stop the gRPC server since a failed sequence triggers a
+					// reboot.
+					s.server.GracefulStop()
+				}
 			}
 		}
 	}()
